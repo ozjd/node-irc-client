@@ -9,7 +9,7 @@ module.exports = class IRCClient extends EventEmitter
   constructor: (@server, @port, @nickName, @userName = 'NodeClient', @realName = '') ->
     @realName = if @realName is '' then ' ' else @realName # Can't be blank.
     @conn = null
-    @version = '0.1a'
+    @version = 'v0.1.1'
     # @_sendQ = '' # TODO: Implement (for before connection)
     @vars =
       fixed:
@@ -22,14 +22,14 @@ module.exports = class IRCClient extends EventEmitter
     @conn = type.connect
       host: @server
       port: parseInt @port
-      rejectUnauthorized: false # Most servers use Unsigned Certificates.
+      rejectUnauthorized: false # Most servers use Unsigned Certificates. TODO: Add option
     @_setEmitters @conn
-    return @ # Returning self, so we can chain calls.
+    @ # Returning self, so we can chain calls.
 
   send: (data) ->
     @conn.write "#{ data }\r\n"
     @emit 'RAW', 'out', data
-    return @
+    @
 
   ctcp: (target, command, message) ->
     @msg target, "\u0001#{ command }#{ if message? then ' ' + message }\u0001"
@@ -99,40 +99,6 @@ module.exports = class IRCClient extends EventEmitter
         @emit 'raw', 'in', data
         @_parseData data
 
-  _parseCommand: (command, prefix, params) ->
-    @vars.temp.prefix = prefix
-    cmd = command.toUpperCase()
-    switch cmd
-      when 'PRIVMSG', 'NOTICE' # Check for CTCP
-        [target, message] = params
-        if message.length >= 3 and message.charCodeAt(0) is 1 and
-           message.charCodeAt(message.length - 1) is 1 # CTCP
-          message = message.substr 1, message.length - 2
-          if cmd is 'PRIVMSG' and message is 'VERSION'
-            returnTarget = if -1 isnt target.indexOf '#' then target else prefix.split('!', 1)[0]
-            @ctcpreply returnTarget, message, "node-irc-client v#{ @version } on Node.js #{ process.version }"
-          if cmd is 'PRIVMSG' and message.substr(0, 7) is 'ACTION ' # Action / Description
-            @emit.apply @, ['ACTION', prefix, target, message.substr 7]
-          else # Actual CTCP / CTCPREPLY
-            words = message.split ' '
-            CTCPcommand = words.slice(0, 1).join(' ').toUpperCase()
-            params = words.slice(1).join ' '
-            type = if cmd is 'PRIVMSG' then 'CTCP' else 'CTCPREPLY'
-            @emit.apply @, [type, prefix, target, CTCPcommand, message.substr CTCPcommand.length + 1]
-        else
-          type = if cmd is 'PRIVMSG' then 'TEXT' else cmd
-          @emit.apply @, [type, prefix, target, message]
-      when 'PING' # This is required even to log into most IRC servers
-        @send "PONG :#{ params.join ' ' }"
-      when '001'
-        @vars.fixed.me = params[0]
-        @emit 'LOGON'
-    if -1 isnt ['NICK', 'QUIT', 'JOIN', 'PART', 'MODE', 'TOPIC', 'INVITE',
-                'KICK', 'KILL', 'PING', 'PONG'].indexOf cmd
-      @emit.apply @, [cmd, prefix].concat params
-    @emit "raw#{ cmd }", params, prefix
-    @vars.temp = {} # Reset temporary vars
-
   _parseData: (data) ->
     prefix = null
     command = null
@@ -154,3 +120,36 @@ module.exports = class IRCClient extends EventEmitter
             params.push words.slice(i).join(' ').substr 1
             completed = true
     @_parseCommand command, prefix, params
+
+  _parseCommand: (command, prefix, params) ->
+    @vars.temp.prefix = prefix # Set temporary vars
+    cmd = command.toUpperCase()
+    switch cmd
+      when 'PRIVMSG', 'NOTICE' # Check for CTCP
+        [target, message] = params
+        if message.length >= 3 and message.charCodeAt(0) is 1 and
+           message.charCodeAt(message.length - 1) is 1 # This is a type of CTCP
+          message = message.substr 1, message.length - 2 # Redefine message
+          if cmd is 'PRIVMSG' and message is 'VERSION' and target is @$me() # CTCP Version (Private Only)
+            @ctcpreply @$nick(), message, "Node.JS IRC Client #{ @version } on Node.js #{ process.version }"
+          if cmd is 'PRIVMSG' and message.substr(0, 7) is 'ACTION ' # Event: ACTION
+            @emit.apply @, ['ACTION', prefix, target, message.substr 7]
+          else # Event: CTCP / CTCPREPLY
+            words = message.split ' '
+            CTCPcommand = words.slice(0, 1).join(' ').toUpperCase()
+            params = words.slice(1).join ' '
+            type = if cmd is 'PRIVMSG' then 'CTCP' else 'CTCPREPLY'
+            @emit.apply @, [type, prefix, target, CTCPcommand, message.substr CTCPcommand.length + 1]
+        else
+          type = if cmd is 'PRIVMSG' then 'TEXT' else cmd # Event: PRIVMSG / NOTICE
+          @emit.apply @, [type, prefix, target, message]
+      when 'PING' # Event: PING (Very Important!)
+        @send "PONG :#{ params.join ' ' }"
+      when '001'
+        @vars.fixed.me = params[0] # Store own nickname
+        @emit 'LOGON'
+    if -1 isnt ['NICK', 'QUIT', 'JOIN', 'PART', 'MODE', 'TOPIC', 'INVITE',
+                'KICK', 'KILL', 'PING', 'PONG'].indexOf cmd # Event: (Supported)
+      @emit.apply @, [cmd, prefix].concat params
+    @emit "raw#{ cmd }", params, prefix # Event: All (raw)
+    @vars.temp = {} # Reset temporary vars
