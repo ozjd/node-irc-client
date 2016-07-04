@@ -1,0 +1,28 @@
+{
+  "name": "node-irc-client",
+  "version": "0.1.0",
+  "description": "A node.js IRC client",
+  "keywords": ["irc", "ircd", "mIRC", "IRC Client", "ircx", "bnc"],
+  "homepage": "https://github.com/ozjd/node-irc-client",
+  "bugs": {
+    "url": "https://github.com/ozjd/node-irc-client/issues"
+  },
+  "license": "GPL-3.0",
+  "author": {
+    "name": "Joshua Davison",
+    "email": "joshua@davison.asia",
+    "url": "http://joshua.davison.asia/"
+  },
+  "files": ["lib"],
+  "main": "lib/irc.js",
+  "repository": {
+    "type" : "git",
+    "url" : "https://github.com/ozjd/node-irc-client.git"
+  },
+  "engines": {
+    "node" : ">=6.2.0"
+  },
+  "devDependencies": {
+    "coffee-script": "~1.10.0"
+  }
+}
